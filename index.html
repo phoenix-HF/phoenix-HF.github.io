@@ -1,1 +1,531 @@
-Hello World
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Convertisseur Tableau vers Discord</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .section {
+            margin-bottom: 30px;
+        }
+        .section h2 {
+            color: #555;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 5px;
+        }
+        .table-container {
+            overflow-x: auto;
+            border: 2px solid #ddd;
+            border-radius: 4px;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background-color: white;
+        }
+        td {
+            border: 1px solid #ccc;
+            width: 60px;
+            height: 30px;
+            text-align: center;
+            vertical-align: middle;
+            position: relative;
+            padding: 2px;
+            font-size: 12px;
+        }
+        td input {
+            width: 100%;
+            height: 100%;
+            border: none;
+            text-align: center;
+            font-size: 12px;
+            background: transparent;
+        }
+        td input:focus {
+            outline: 2px solid #007bff;
+            background-color: #f0f8ff;
+        }
+        .ignored {
+            background-color: #ffcccc !important;
+        }
+        .ignored input {
+            background-color: #ffcccc !important;
+        }
+        .controls {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        button {
+            padding: 8px 16px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .danger {
+            background-color: #dc3545;
+        }
+        .danger:hover {
+            background-color: #c82333;
+        }
+        .success {
+            background-color: #28a745;
+        }
+        .success:hover {
+            background-color: #218838;
+        }
+        textarea {
+            width: 100%;
+            height: 400px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 14px;
+            resize: vertical;
+        }
+        .info {
+            background-color: #e7f3ff;
+            border: 1px solid #b8daff;
+            border-radius: 4px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .row-header, .col-header {
+            background-color: #f8f9fa;
+            font-weight: bold;
+            color: #495057;
+        }
+        .group-highlight {
+            background-color: #fff3cd;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎮 Convertisseur Tableau vers Discord</h1>
+        
+        <div class="info">
+            <strong>Instructions :</strong>
+            <ul>
+                <li>Collez votre tableau Google Sheets directement dans le tableau ci-dessous</li>
+                <li>Clic droit sur une cellule pour la marquer comme "à ignorer" (fond rouge)</li>
+                <li>Ctrl+Z pour annuler, Ctrl+Y pour refaire</li>
+                <li>Le logiciel génère automatiquement le texte formaté pour Discord</li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <h2>📊 Tableau d'entrée (15 colonnes × 33 lignes)</h2>
+            <div class="controls">
+                <button onclick="clearTable()" class="danger">Vider le tableau</button>
+                <button onclick="generateOutput()" class="success">Générer le texte Discord</button>
+                <button onclick="undo()" id="undoBtn" disabled>↶ Annuler (Ctrl+Z)</button>
+                <button onclick="redo()" id="redoBtn" disabled>↷ Refaire (Ctrl+Y)</button>
+            </div>
+            <div class="table-container">
+                <table id="mainTable"></table>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>💬 Texte pour Discord</h2>
+            <textarea id="output" placeholder="Le texte formaté pour Discord apparaîtra ici..."></textarea>
+            <button onclick="copyToClipboard()" class="success" style="margin-top: 10px;">📋 Copier dans le presse-papiers</button>
+        </div>
+    </div>
+
+    <script>
+        let tableData = [];
+        let ignoredCells = new Set();
+        let history = [];
+        let historyIndex = -1;
+
+        // Initialiser le tableau
+        function initTable() {
+            const table = document.getElementById('mainTable');
+            tableData = Array(34).fill(null).map(() => Array(16).fill(''));
+            
+            // En-tête des colonnes
+            let headerRow = table.insertRow();
+            headerRow.insertCell().innerHTML = '';
+            for (let col = 0; col < 15; col++) {
+                let cell = headerRow.insertCell();
+                cell.className = 'col-header';
+                cell.innerHTML = String.fromCharCode(65 + col);
+            }
+
+            // Lignes de données
+            for (let row = 0; row < 33; row++) {
+                let tr = table.insertRow();
+                
+                // En-tête de ligne
+                let headerCell = tr.insertCell();
+                headerCell.className = 'row-header';
+                headerCell.innerHTML = row + 1;
+                
+                // Cellules de données
+                for (let col = 0; col < 15; col++) {
+                    let cell = tr.insertCell();
+                    let input = document.createElement('input');
+                    input.type = 'text';
+                    input.dataset.row = row;
+                    input.dataset.col = col;
+                    
+                    input.addEventListener('input', function(e) {
+                        saveState();
+                        tableData[row][col] = e.target.value;
+                        generateOutput();
+                    });
+                    
+                    input.addEventListener('paste', handlePaste);
+                    input.addEventListener('contextmenu', function(e) {
+                        e.preventDefault();
+                        toggleIgnored(row, col);
+                    });
+                    
+                    cell.appendChild(input);
+                }
+            }
+            
+            saveState();
+        }
+
+        // Gestion du collage depuis Google Sheets
+        function handlePaste(e) {
+            e.preventDefault();
+            const startRow = parseInt(e.target.dataset.row);
+            const startCol = parseInt(e.target.dataset.col);
+            const paste = e.clipboardData.getData('text');
+            const rows = paste.split('\n');
+            
+            saveState();
+            
+            for (let i = 0; i < rows.length && startRow + i < 33; i++) {
+                const cols = rows[i].split('\t');
+                for (let j = 0; j < cols.length && startCol + j < 15; j++) {
+                    const row = startRow + i;
+                    const col = startCol + j;
+                    tableData[row][col] = cols[j].trim();
+                    const input = document.querySelector(`input[data-row="${row}"][data-col="${col}"]`);
+                    if (input) input.value = cols[j].trim();
+                }
+            }
+            
+            generateOutput();
+        }
+
+        // Basculer l'état ignoré d'une cellule
+        function toggleIgnored(row, col) {
+            saveState();
+            const key = `${row},${col}`;
+            const cell = document.querySelector(`input[data-row="${row}"][data-col="${col}"]`).parentElement;
+            
+            if (ignoredCells.has(key)) {
+                ignoredCells.delete(key);
+                cell.classList.remove('ignored');
+            } else {
+                ignoredCells.add(key);
+                cell.classList.add('ignored');
+            }
+            
+            generateOutput();
+        }
+
+        // Sauvegarder l'état pour l'historique
+        function saveState() {
+            const state = {
+                tableData: JSON.parse(JSON.stringify(tableData)),
+                ignoredCells: new Set(ignoredCells)
+            };
+            
+            history = history.slice(0, historyIndex + 1);
+            history.push(state);
+            historyIndex++;
+            
+            if (history.length > 50) {
+                history.shift();
+                historyIndex--;
+            }
+            
+            updateUndoRedoButtons();
+        }
+
+        // Annuler
+        function undo() {
+            if (historyIndex > 0) {
+                historyIndex--;
+                restoreState(history[historyIndex]);
+            }
+        }
+
+        // Refaire
+        function redo() {
+            if (historyIndex < history.length - 1) {
+                historyIndex++;
+                restoreState(history[historyIndex]);
+            }
+        }
+
+        // Restaurer un état
+        function restoreState(state) {
+            tableData = JSON.parse(JSON.stringify(state.tableData));
+            ignoredCells = new Set(state.ignoredCells);
+            
+            // Mettre à jour l'interface
+            for (let row = 0; row < 33; row++) {
+                for (let col = 0; col < 15; col++) {
+                    const input = document.querySelector(`input[data-row="${row}"][data-col="${col}"]`);
+                    const cell = input.parentElement;
+                    
+                    input.value = tableData[row][col];
+                    
+                    if (ignoredCells.has(`${row},${col}`)) {
+                        cell.classList.add('ignored');
+                    } else {
+                        cell.classList.remove('ignored');
+                    }
+                }
+            }
+            
+            updateUndoRedoButtons();
+            generateOutput();
+        }
+
+        // Mettre à jour les boutons annuler/refaire
+        function updateUndoRedoButtons() {
+            document.getElementById('undoBtn').disabled = historyIndex <= 0;
+            document.getElementById('redoBtn').disabled = historyIndex >= history.length - 1;
+        }
+
+        // Vider le tableau
+        function clearTable() {
+            saveState();
+            tableData = Array(34).fill(null).map(() => Array(16).fill(''));
+            ignoredCells.clear();
+            
+            document.querySelectorAll('input').forEach(input => {
+                input.value = '';
+                input.parentElement.classList.remove('ignored');
+            });
+            
+            generateOutput();
+        }
+
+        // Générer le texte de sortie
+        function generateOutput() {
+            let output = '';
+            let existingGroups = [];
+            let leaderInfo = [];
+            
+            // Configuration des groupes
+            const groups = [
+                { num: 1, col: 0, row: 3 },  // Col_GR_1 = 1 (index 0), lig_GR_1 = 4 (index 3)
+                { num: 2, col: 0, row: 11 }, // lig_GR_2 = lig_GR_1+8
+                { num: 3, col: 0, row: 19 }, // lig_GR_3 = lig_GR_2+8
+                { num: 4, col: 0, row: 27 }, // lig_GR_4 = lig_GR_3+8
+                { num: 5, col: 8, row: 3 },  // Col_GR_5 = Col_GR_1+8, lig_GR_5 = lig_GR_1
+                { num: 6, col: 8, row: 11 }, // lig_GR_6 = lig_GR_5+8
+                { num: 7, col: 8, row: 19 }, // lig_GR_7 = lig_GR_6+8
+                { num: 8, col: 8, row: 27 }  // lig_GR_8 = lig_GR_7+8
+            ];
+
+            groups.forEach(group => {
+                const { num, col, row } = group;
+                
+                // Vérifier si le groupe existe (cellule non vide)
+                if (tableData[row] && tableData[row][col] && tableData[row][col].trim() !== '') {
+                    existingGroups.push(num);
+                    
+                    // Traiter Horde
+                    const hordeResult = processGroup(num, col, row, 'Horde', 2);
+                    if (hordeResult.text) output += hordeResult.text + '\n';
+                    
+                    // Traiter Alliance (si Horde existe)
+                    const allianceResult = processGroup(num, col, row, 'Alliance', 6);
+                    if (allianceResult.text) output += allianceResult.text + '\n';
+                    
+                    // Stocker les informations des leaders
+                    leaderInfo.push({
+                        num: num,
+                        hordeLeader: hordeResult.leader,
+                        allianceLeader: allianceResult.leader,
+                        hordeIsMain: hordeResult.isMain,
+                        allianceIsMain: allianceResult.isMain
+                    });
+                }
+            });
+
+            // Ajouter la section des leaders
+            if (existingGroups.length > 0) {
+                output += 'Pour ceux qui forment les groupes :\n';
+                
+                // Calculer l'alignement nécessaire pour les :wow_alliance:
+                let maxHordeLength = 0;
+                leaderInfo.forEach(info => {
+                    const hordeText = info.hordeLeader + (info.hordeIsMain ? ' (avec ton main)' : '');
+                    const hordeLineLength = `:wow_horde: G${info.num} : @${hordeText} `.length;
+                    maxHordeLength = Math.max(maxHordeLength, hordeLineLength);
+                });
+                
+                leaderInfo.forEach(info => {
+                    const hordeText = info.hordeLeader + (info.hordeIsMain ? ' (avec ton main)' : '');
+                    const allianceText = info.allianceLeader + (info.allianceIsMain ? ' (avec ton main)' : '');
+                    
+                    const hordepart = `:wow_horde: G${info.num} : @${hordeText} `;
+                    const spacesNeeded = maxHordeLength - hordepart.length;
+                    const padding = ' '.repeat(Math.max(0, spacesNeeded));
+                    
+                    output += `${hordepart}${padding}:wow_alliance: G${info.num} : @${allianceText}\n`;
+                });
+                output += 'Le lead sera donné au premier alt (en orange) de votre groupe une fois le groupe formé';
+            }
+
+            document.getElementById('output').value = output.trim();
+        }
+
+        // Traiter un groupe (Horde ou Alliance)
+        function processGroup(groupNum, baseCol, baseRow, faction, colOffset) {
+            const targetCol = baseCol + colOffset;
+            const factionCols = faction === 'Horde' ? [baseCol, baseCol + 1, baseCol + 2] : [baseCol + 4, baseCol + 5, baseCol + 6];
+            
+            // Vérifier les cellules à ignorer dans la zone du groupe
+            let ignoredRows = [];
+            let hasIgnoredCells = false;
+            let firstIgnoredRow = null;
+            
+            for (let r = baseRow; r < baseRow + 5; r++) {
+                for (let c of factionCols) {
+                    if (ignoredCells.has(`${r},${c}`)) {
+                        hasIgnoredCells = true;
+                        if (!ignoredRows.includes(r)) {
+                            ignoredRows.push(r);
+                        }
+                        if (firstIgnoredRow === null) {
+                            firstIgnoredRow = r;
+                        }
+                    }
+                }
+            }
+            
+            // Déterminer le leader et s'il s'agit du main
+            let leader = '';
+            let isMain = false;
+            
+            if (hasIgnoredCells) {
+                // S'il y a une cellule ignorée, prendre la première ligne ignorée
+                const leaderCol = faction === 'Horde' ? baseCol : baseCol + 4;
+                leader = tableData[firstIgnoredRow] && tableData[firstIgnoredRow][leaderCol] ? tableData[firstIgnoredRow][leaderCol].trim() : '';
+                isMain = true; // Le leader avec cellule ignorée utilise son main
+            } else {
+                // Vérifier s'il y a du contenu dans la ligne +5 pour les colonnes de cette faction
+                let hasContentInNextRow = false;
+                let leaderFromNextRow = '';
+                
+                for (let c of factionCols) {
+                    if (tableData[baseRow + 5] && tableData[baseRow + 5][c] && tableData[baseRow + 5][c].trim() !== '') {
+                        hasContentInNextRow = true;
+                        if (leaderFromNextRow === '') {
+                            leaderFromNextRow = tableData[baseRow + 5][c].trim();
+                        }
+                        break;
+                    }
+                }
+                
+                if (hasContentInNextRow) {
+                    // Prendre le leader de la ligne +5
+                    leader = leaderFromNextRow;
+                    isMain = true; // Le leader de la ligne +5 utilise son main
+                } else {
+                    // Prendre le leader de la première ligne du groupe
+                    const leaderCol = faction === 'Horde' ? baseCol : baseCol + 4;
+                    leader = tableData[baseRow] && tableData[baseRow][leaderCol] ? tableData[baseRow][leaderCol].trim() : '';
+                    isMain = false; // Pas d'ignoration, pas de contenu ligne +5 = première ligne ignorée
+                    ignoredRows.push(baseRow); // Ignorer la première ligne dans l'affichage
+                }
+            }
+            
+            // Construire le texte de sortie
+            const emoji = faction === 'Horde' ? ':wow_horde:' : ':wow_alliance:';
+            let result = `${emoji} Groupe ${groupNum} ${faction} :\n`;
+            
+            for (let r = baseRow; r < baseRow + 5; r++) {
+                if (!ignoredRows.includes(r)) {
+                    const cellValue = tableData[r] && tableData[r][targetCol] ? tableData[r][targetCol].trim() : '';
+                    if (cellValue !== '') {
+                        result += `${cellValue}\n`;
+                    }
+                }
+            }
+            
+            result += '';
+            
+            return {
+                text: result,
+                leader: leader,
+                isMain: isMain
+            };
+        }
+
+        // Copier dans le presse-papiers
+        async function copyToClipboard() {
+            const output = document.getElementById('output');
+            try {
+                await navigator.clipboard.writeText(output.value);
+                alert('Texte copié dans le presse-papiers !');
+            } catch (err) {
+                output.select();
+                document.execCommand('copy');
+                alert('Texte copié dans le presse-papiers !');
+            }
+        }
+
+        // Gestion des raccourcis clavier
+        document.addEventListener('keydown', function(e) {
+            if (e.ctrlKey && e.key === 'z') {
+                e.preventDefault();
+                undo();
+            } else if (e.ctrlKey && e.key === 'y') {
+                e.preventDefault();
+                redo();
+            }
+        });
+
+        // Initialiser l'application
+        initTable();
+        generateOutput();
+    </script>
+</body>
+</html>
